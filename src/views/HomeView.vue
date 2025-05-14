@@ -338,7 +338,10 @@ export default {
     fetchUserInfo() {
       axios.get('/api/user/info')
         .then(response => {
-          this.userInfo = response.data;
+          // 获取到用户信息后，更新 Vuex 全局 userInfo，保证 userId 始终有效
+          this.$store.commit('setUserInfo', response.data);
+          // 只从 Vuex 获取 userInfo，避免 this.userInfo 被覆盖为无效值
+          this.userInfo = this.$store.state.userInfo;
         })
         .catch(error => {
           console.error('获取用户信息失败:', error);
@@ -346,7 +349,7 @@ export default {
         });
     },
     fetchSchedule() {
-      axios.get('/api/schedule', { params: { userId: this.userInfo.id } })
+      axios.get('/api/schedule', { params: { userId: this.userInfo.userId } })
         .then(response => {
           // 假设后端返回 [{ day: '周一', period: '第1节', courseName: '高数', location: 'A101' }, ...]
           // 需要转换为前端 schedule 结构
@@ -395,6 +398,8 @@ export default {
       this.isEditing = !this.isEditing;
     },
     saveSchedule() {
+      // 全局获取 userId，保证不为 null
+      const userId = this.$store.state.userInfo && this.$store.state.userInfo.userId;
       const formattedSchedule = [];
       this.schedule.forEach(row => {
         row.courses.forEach((course, index) => {
@@ -404,19 +409,21 @@ export default {
               period: row.period,
               courseName: course.course,
               location: course.location,
+              userId: Number(userId)
             });
           }
         });
       });
-
-      axios.put('/api/schedule', formattedSchedule, { params: { userId: this.userInfo.id } })
+      if (formattedSchedule.length === 0) {
+        formattedSchedule.push({ day: '', period: '', courseName: '', location: '', userId: Number(userId) });
+      }
+      axios.put('/api/schedule', formattedSchedule, { params: { userId: Number(userId) } })
         .then(() => {
           this.$message.success('课程表更新成功');
-          // 保存成功后自动刷新课程表，确保数据与后端一致
           this.fetchSchedule();
         })
         .catch(error => {
-          console.error('更新课程表失败:', error);
+          console.error('课程表更新失败:', error);
           this.$message.error('课程表更新失败');
         });
     },
@@ -476,6 +483,10 @@ export default {
     },
   },
   created() {
+    // 优先从 Vuex 获取 userInfo，保证 userId 有效
+    if (this.$store.state.userInfo && this.$store.state.userInfo.userId) {
+      this.userInfo = this.$store.state.userInfo;
+    }
     this.fetchUserInfo();
     this.fetchSchedule();
     this.fetchNotifications();

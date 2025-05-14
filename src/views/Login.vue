@@ -82,14 +82,19 @@ export default {
     async handleLogin() {
       try {
         const response = await login(this.loginForm.username, this.loginForm.password);
-        const { success, token, userInfo } = response.data;
+        const { success, token, userId, message } = response.data;
 
         if (success) {
           localStorage.setItem("authToken", token); // 存储JWT令牌
+          // 构造全局 userInfo，保证 userId 字段存在
+          const userInfo = {
+            username: this.loginForm.username,
+            userId: userId
+          };
           this.$store.commit("setUserInfo", userInfo); // 存储用户信息到Vuex
           this.$router.push("/HomeView"); // 跳转到HomeView
         } else {
-          ElMessage.error("登录失败");
+          ElMessage.error(message || "登录失败");
         }
       } catch (error) {
         console.error("登录失败:", error);

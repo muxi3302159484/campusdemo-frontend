@@ -116,7 +116,10 @@ export default {
         '😊', '😂', '😍', '😎', '😢', '👍', '🙏', '🎉', '❤️', '🔥', '🤔', '😴',
         '😡', '🤩', '🥳', '😇', '🤗', '😜', '😱', '😅', '🙌', '💪', '🎁', '🌟'
       ],
-      searchQuery: '' // 搜索框内容
+      searchQuery: '', // 搜索框内容
+      socket: null, // WebSocket对象
+      reconnectTimer: null,
+      userId: null // 当前用户id
     };
   },
   computed: {
@@ -159,18 +162,46 @@ export default {
           status: '发送中'
         };
         this.messages.push(message);
-        try {
-          await axios.post(`/api/chat/${this.activeContact.id}/messages`, {
-            text: this.newMessage
-          });
-          message.status = '已发送';
-          this.updateLastMessage(this.activeContact.id, this.newMessage); // 更新联系人列表中的 lastMessage
-          this.newMessage = '';
-          this.scrollToBottom();
-        } catch (error) {
-          message.status = '发送失败';
-          this.$message.error('发送消息失败，请稍后重试！');
+        // 优先用WebSocket发送
+        if (this.socket && this.socket.readyState === 1 && this.activeContact.id) {
+          const msgObj = {
+            from: this.userId,
+            to: this.activeContact.id,
+            text: this.newMessage,
+            time: new Date().toISOString()
+          };
+          try {
+            this.socket.send(JSON.stringify(msgObj));
+            message.status = '已发送';
+            this.updateLastMessage(this.activeContact.id, this.newMessage); // 更新联系人列表中的 lastMessage
+            this.newMessage = '';
+            this.scrollToBottom();
+          } catch (e) {
+            message.status = '发送失败';
+            this.$message.error('WebSocket发送失败，尝试HTTP...');
+            await this.sendMessageFallback();
+          }
+        } else {
+          // WebSocket不可用时降级HTTP
+          await this.sendMessageFallback();
         }
+      }
+    },
+    // HTTP降级发送消息
+    async sendMessageFallback() {
+      try {
+        await axios.post(`/api/chat/${this.activeContact.id}/messages`, {
+          text: this.newMessage
+        });
+        const lastMsg = this.messages[this.messages.length - 1];
+        if (lastMsg) lastMsg.status = '已发送';
+        this.updateLastMessage(this.activeContact.id, this.newMessage); // 更新联系人列表中的 lastMessage
+        this.newMessage = '';
+        this.scrollToBottom();
+      } catch (error) {
+        const lastMsg = this.messages[this.messages.length - 1];
+        if (lastMsg) lastMsg.status = '发送失败';
+        this.$message.error('发送消息失败，请稍后重试！');
       }
     },
     // 更新联系人列表中的 lastMessage
@@ -188,7 +219,7 @@ export default {
     scrollToBottom() {
       this.$nextTick(() => {
         const chatContent = this.$refs.chatContent;
-        chatContent.scrollTop = chatContent.scrollHeight;
+        if (chatContent) chatContent.scrollTop = chatContent.scrollHeight;
       });
     },
     // 处理联系人选择
@@ -208,10 +239,89 @@ export default {
       };
       this.messages.push(message);
       this.scrollToBottom();
+      // 附件消息也可通过WebSocket通知对方
+      if (this.socket && this.socket.readyState === 1 && this.activeContact.id) {
+        const msgObj = {
+          from: this.userId,
+          to: this.activeContact.id,
+          text: `[附件] ${response.fileUrl || response.fileName}`,
+          time: new Date().toISOString()
+        };
+        this.socket.send(JSON.stringify(msgObj));
+      }
+    },
+    // WebSocket连接
+    connectWebSocket() {
+      if (this.socket) {
+        this.socket.close();
+        this.socket = null;
+      }
+      // 假设后端ws地址如下，token或userId可根据实际情况传递
+      const wsUrl = `${window.location.protocol === 'https:' ? 'wss' : 'ws'}://${window.location.host}/ws/chat?userId=${this.userId}`;
+      this.socket = new WebSocket(wsUrl);
+      this.socket.onopen = () => {
+        // 连接成功
+        // 可发送上线通知等
+      };
+      this.socket.onmessage = (event) => {
+        try {
+          const msg = JSON.parse(event.data);
+          // 判断是否为当前聊天对象的消息
+          if (this.activeContact && msg.from === this.activeContact.id) {
+            this.messages.push({
+              user: this.activeContact.name,
+              text: msg.text,
+              time: new Date(msg.time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+              status: '已读'
+            });
+            this.scrollToBottom();
+            this.updateLastMessage(this.activeContact.id, msg.text);
+          } else {
+            // 其它联系人消息可做未读提醒
+            const contact = this.contacts.find(c => c.id === msg.from);
+            if (contact) {
+              contact.lastMessage = msg.text;
+              // 可加未读数等
+            }
+          }
+        } catch (e) {
+          // 非json消息
+        }
+      };
+      this.socket.onclose = () => {
+        // 断线重连
+        this.reconnectTimer = setTimeout(() => {
+          this.connectWebSocket();
+        }, 3000);
+      };
+      this.socket.onerror = () => {
+        this.socket.close();
+      };
+    },
+    // 获取当前用户id
+    async fetchUserId() {
+      try {
+        const res = await axios.get('/api/user/info');
+        this.userId = res.data.id;
+      } catch {
+        this.userId = null;
+      }
     }
   },
   async created() {
+    await this.fetchUserId();
     await this.fetchContacts(); // 初始化时加载联系人列表
+    if (this.userId) {
+      this.connectWebSocket();
+    }
+  },
+  beforeDestroy() {
+    if (this.socket) {
+      this.socket.close();
+    }
+    if (this.reconnectTimer) {
+      clearTimeout(this.reconnectTimer);
+    }
   }
 };
 </script>
