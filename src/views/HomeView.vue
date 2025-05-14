@@ -409,7 +409,7 @@ export default {
               period: row.period,
               courseName: course.course,
               location: course.location,
-              userId: Number(userId)
+              userId: Number(userId) // 每条数据都加 userId
             });
           }
         });
