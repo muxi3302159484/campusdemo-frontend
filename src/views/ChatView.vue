@@ -2,31 +2,32 @@
   <div class="chat-container">
     <!-- 左侧联系人列表 -->
     <el-aside width="300px" class="contact-list">
-      <el-input
-        v-model="searchQuery"
-        placeholder="搜索联系人"
-        class="search-input"
-        prefix-icon="el-icon-search"
-        clearable
-      ></el-input>
-      <el-scrollbar>
-        <el-menu
-          class="contact-menu"
-          :default-active="activeContact.id"
-          @select="handleContactSelect"
-        >
-          <el-menu-item
-            v-for="contact in filteredContacts"
-            :key="contact.id"
-            :index="contact.id"
-          >
+      <!-- 新增：查找用户区域 -->
+      <div class="search-user-bar">
+        <el-input v-model="userSearchQuery" placeholder="查找用户" size="small" style="width: 150px;" />
+        <el-button type="primary" size="small" @click="searchUsers">查找</el-button>
+      </div>
+      <el-scrollbar style="height:calc(100vh - 60px);">
+        <!-- 查找结果展示 -->
+        <div v-if="userSearchResults.length" class="user-search-results">
+          <div v-for="user in userSearchResults" :key="user.id" class="user-search-item">
+            <el-avatar :src="user.avatar" size="32" />
+            <span style="flex:1;">{{ user.name }}</span>
+            <el-button type="success" size="mini" @click="addContact(user)">加为联系人</el-button>
+          </div>
+        </div>
+        <!-- 联系人列表 -->
+        <div class="contact-list-section">
+          <div class="contact-list-title">联系人</div>
+          <div v-if="contacts.length === 0" class="no-contacts">暂无联系人，请添加</div>
+          <div v-for="contact in filteredContacts" :key="contact.id" class="contact-list-item" :class="{active: contact.id === activeContact.id}" @click="selectContact(contact)">
             <el-avatar :src="contact.avatar" size="40"></el-avatar>
             <div class="contact-info">
-              <h4 class="contact-name">{{ contact.name }}</h4>
-              <p class="last-message">{{ contact.lastMessage }}</p>
+              <div class="contact-name">{{ contact.name }}</div>
+              <div class="last-message">{{ contact.lastMessage }}</div>
             </div>
-          </el-menu-item>
-        </el-menu>
+          </div>
+        </div>
       </el-scrollbar>
     </el-aside>
 
@@ -104,6 +105,7 @@
 
 <script>
 import axios from 'axios';
+import axiosInstance from '@/api/axiosInstance';
 
 export default {
   data() {
@@ -119,7 +121,9 @@ export default {
       searchQuery: '', // 搜索框内容
       socket: null, // WebSocket对象
       reconnectTimer: null,
-      userId: null // 当前用户id
+      userId: null, // 当前用户id
+      userSearchQuery: '',
+      userSearchResults: [],
     };
   },
   computed: {
@@ -256,12 +260,10 @@ export default {
         this.socket.close();
         this.socket = null;
       }
-      // 假设后端ws地址如下，token或userId可根据实际情况传递
-      const wsUrl = `${window.location.protocol === 'https:' ? 'wss' : 'ws'}://${window.location.host}/ws/chat?userId=${this.userId}`;
-      this.socket = new WebSocket(wsUrl);
+      // 直接使用本地开发环境 WebSocket 地址
+      this.socket = new WebSocket("ws://localhost:8080/ws/chat");
       this.socket.onopen = () => {
-        // 连接成功
-        // 可发送上线通知等
+        console.log("WebSocket connected");
       };
       this.socket.onmessage = (event) => {
         try {
@@ -286,16 +288,11 @@ export default {
           }
         } catch (e) {
           // 非json消息
+          console.log('收到非JSON消息:', event.data);
         }
       };
       this.socket.onclose = () => {
-        // 断线重连
-        this.reconnectTimer = setTimeout(() => {
-          this.connectWebSocket();
-        }, 3000);
-      };
-      this.socket.onerror = () => {
-        this.socket.close();
+        console.log("WebSocket disconnected");
       };
     },
     // 获取当前用户id
@@ -305,6 +302,32 @@ export default {
         this.userId = res.data.id;
       } catch {
         this.userId = null;
+      }
+    },
+    async searchUsers() {
+      if (!this.userSearchQuery.trim()) return;
+      try {
+        const res = await axios.get('/api/user/search', { params: { keyword: this.userSearchQuery } });
+        this.userSearchResults = res.data.users || [];
+      } catch {
+        this.$message.error('查找用户失败');
+      }
+    },
+    async addContact(user) {
+      try {
+        // 容错：user 结构兼容 id/userId/uid
+        const userId = user.id || user.userId || user.uid;
+        if (!userId) {
+          this.$message.error('用户ID无效，无法添加');
+          return;
+        }
+        // 必须用 axiosInstance 保证带上 Authorization
+        await axiosInstance.post('/user/addfriend', { userId: String(userId) });
+        this.$message.success('添加成功');
+        this.userSearchResults = [];
+        this.fetchContacts(); // 刷新联系人列表
+      } catch (e) {
+        this.$message.error((e.response && e.response.data && e.response.data.message) || '添加失败');
       }
     }
   },
@@ -347,8 +370,56 @@ export default {
   margin: 10px; /* 增加间距 */
 }
 
-.contact-menu {
-  padding: 0;
+.search-user-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 10px 0 10px;
+}
+
+.user-search-results {
+  padding: 8px 10px;
+}
+
+.user-search-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.contact-list-section {
+  padding: 10px;
+}
+
+.contact-list-title {
+  font-size: 14px;
+  font-weight: bold;
+  color: #333;
+  margin-bottom: 8px;
+}
+
+.no-contacts {
+  text-align: center;
+  color: #888;
+  padding: 20px 0;
+}
+
+.contact-list-item {
+  display: flex;
+  align-items: center;
+  padding: 10px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.contact-list-item:hover {
+  background-color: #f5f5f5;
+}
+
+.contact-list-item.active {
+  background-color: #e1f5fe; /* 更明显的选中效果 */
 }
 
 .contact-info {

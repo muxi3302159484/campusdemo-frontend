@@ -82,16 +82,24 @@ export default {
     async handleLogin() {
       try {
         const response = await login(this.loginForm.username, this.loginForm.password);
-        const { success, token, userId, message } = response.data;
+        const { success, token, userId, userInfo: backendUserInfo, message } = response.data;
 
         if (success) {
           localStorage.setItem("authToken", token); // 存储JWT令牌
-          // 构造全局 userInfo，保证 userId 字段存在
-          const userInfo = {
-            username: this.loginForm.username,
-            userId: userId
-          };
+          // 优先用后端返回的 userInfo 对象（含 userId、name、role 等），否则 fallback
+          let userInfo = backendUserInfo;
+          if (!userInfo) {
+            userInfo = {
+              username: this.loginForm.username,
+              userId: userId
+            };
+          }
+          // 保证 userId 字段存在
+          if (!userInfo.userId && userId) {
+            userInfo.userId = userId;
+          }
           this.$store.commit("setUserInfo", userInfo); // 存储用户信息到Vuex
+          localStorage.setItem("userInfo", JSON.stringify(userInfo)); // 持久化
           this.$router.push("/HomeView"); // 跳转到HomeView
         } else {
           ElMessage.error(message || "登录失败");

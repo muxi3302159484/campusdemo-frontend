@@ -3,7 +3,7 @@
     <!-- 发布动态卡片 -->
     <el-card class="post-editor" shadow="always">
       <div class="editor-header">
-        <el-avatar :size="50" :src="currentUser.avatar"></el-avatar>
+        <el-avatar :size="50" :src="resolvedAvatar"></el-avatar>
         <div class="user-info">
           <h3>{{ currentUser.name }}</h3>
           <p class="sub-info">{{ currentUser.college }} · {{ currentUser.major }}</p>
@@ -196,10 +196,10 @@ export default {
   data() {
     return {
       currentUser: {
-        name: '陶大炮',
-        avatar: 'https://shadow.elemecdn.com/app/element/hamburger.9cf7b091-55e9-11e9-a976-7f4d0b07eef6.png',
-        college: '计算机学院',
-        major: '软件工程专业'
+        name: this.$store?.state?.userInfo?.name || '',
+        avatar: this.$store?.state?.userInfo?.avatar || '',
+        college: this.$store?.state?.userInfo?.college || this.$store?.state?.userInfo?.department || this.$store?.state?.userInfo?.schoolName || '',
+        major: this.$store?.state?.userInfo?.major || this.$store?.state?.userInfo?.specialty || ''
       },
       newPost: {
         content: '',
@@ -220,6 +220,36 @@ export default {
       totalPosts: 0,
       pageSize: 10,
       currentPage: 1 // 当前页码
+    }
+  },
+  watch: {
+    // 保证切换用户后 currentUser 也能同步
+    '$store.state.userInfo': {
+      handler(val) {
+        this.currentUser.name = val?.name || '';
+        this.currentUser.avatar = val?.avatar || '';
+        this.currentUser.college = val?.college || val?.department || val?.schoolName || '';
+        this.currentUser.major = val?.major || val?.specialty || '';
+      },
+      deep: true,
+      immediate: true
+    }
+  },
+  computed: {
+    resolvedAvatar() {
+      // 兼容本地头像和网络头像
+      const avatar = this.currentUser.avatar;
+      if (!avatar) return require('@/assets/avatars/avatar_1.png');
+      // 如果是本地头像名
+      if (/^avatar_\d+\.png$/.test(avatar)) {
+        try {
+          return require(`@/assets/avatars/${avatar}`);
+        } catch {
+          return require('@/assets/avatars/avatar_1.png');
+        }
+      }
+      // 网络头像
+      return avatar;
     }
   },
   methods: {
@@ -336,23 +366,6 @@ export default {
 
     .post-input {
       ::v-deep .el-textarea__inner {
-        border: 1px solid #ddd;
-        padding: 12px;
-        font-size: 16px;
-        border-radius: 8px;
-      }
-    }
-
-    .editor-footer {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      margin-top: 20px;
-
-      .action-buttons {
-        display: flex;
-        align-items: center;
-        gap: 15px;
       }
 
       .topic-select {

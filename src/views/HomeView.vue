@@ -88,6 +88,7 @@
           <el-card shadow="hover" class="card">
             <h3 class="card-title">好友动态</h3>
             <p>显示好友的最新动态...</p>
+            <el-button type="primary" @click="navigateToFeedView">进入动态广场</el-button>
           </el-card>
           <el-card shadow="hover" class="card">
             <h3 class="card-title">社团动态</h3>
@@ -244,14 +245,24 @@
               <el-form-item label="邮箱验证">
                 <el-switch v-model="userDetailsForm.is_email_verified" active-text="已验证" inactive-text="未验证"></el-switch>
               </el-form-item>
-              <el-form-item label="学号">
-                <el-input v-model="userDetailsForm.student_id"></el-input>
-              </el-form-item>
               <el-form-item label="学校ID">
                 <el-input v-model="userDetailsForm.school_id"></el-input>
               </el-form-item>
               <el-form-item label="院系ID">
                 <el-input v-model="userDetailsForm.department_id"></el-input>
+              </el-form-item>
+              <el-form-item label="头像">
+                <div style="display: flex; gap: 16px;">
+                  <div v-for="id in [1,2,3,4]" :key="id" style="display: flex; flex-direction: column; align-items: center;">
+                    <el-avatar
+                      :src="require(`@/assets/avatars/avatar_${id}.png`)"
+                      :class="['avatar-select', { 'avatar-selected': Number(userDetailsForm.avatar) === Number(id) }]"
+                      size="64"
+                      @click.native="selectAvatar(id)"
+                    />
+                    <span v-if="Number(userDetailsForm.avatar) === Number(id)" style="color:#409EFF;font-size:12px;">已选</span>
+                  </div>
+                </div>
               </el-form-item>
               <el-form-item>
                 <el-button type="primary" @click="saveUserDetails">保存修改</el-button>
@@ -304,9 +315,9 @@ export default {
         last_login: '',
         is_active: false,
         is_email_verified: false,
-        student_id: '',
         school_id: '',
-        department_id: ''
+        department_id: '',
+        avatar: 1 // 默认头像编号，保证字段存在
       },
       events: [],
     };
@@ -338,15 +349,17 @@ export default {
     fetchUserInfo() {
       axios.get('/api/user/info')
         .then(response => {
-          // 获取到用户信息后，更新 Vuex 全局 userInfo，保证 userId 始终有效
+          const oldUserId = this.$store.state.userInfo && this.$store.state.userInfo.userId;
           this.$store.commit('setUserInfo', response.data);
-          // 只从 Vuex 获取 userInfo，避免 this.userInfo 被覆盖为无效值
           this.userInfo = this.$store.state.userInfo;
+          localStorage.setItem('userInfo', JSON.stringify(response.data));
+          // 只有 userId 变化时才重新拉 schedule，避免重复请求
+          const newUserId = response.data && response.data.userId;
+          if (newUserId && newUserId !== oldUserId) {
+            this.fetchSchedule();
+          }
         })
-        .catch(error => {
-          console.error('获取用户信息失败:', error);
-          this.$message.error('获取用户信息失败');
-        });
+        .catch(() => {}); // 暂时隐藏 info 报错通知
     },
     fetchSchedule() {
       axios.get('/api/schedule', { params: { userId: this.userInfo.userId } })
@@ -375,10 +388,7 @@ export default {
             courses: scheduleMap[period]
           }));
         })
-        .catch(error => {
-          console.error('获取课程表失败:', error);
-          this.$message.error('获取课程表失败');
-        });
+        .catch(() => {}); // 暂时隐藏 notice 报错通知
     },
     markNotificationAsRead(index) {
       this.notifications[index].read = true;
@@ -447,14 +457,18 @@ export default {
           this.userDetailsForm = {
             ...res.data,
             is_active: !!res.data.is_active,
-            is_email_verified: !!res.data.is_email_verified
+            is_email_verified: !!res.data.is_email_verified,
+            avatar: res.data.avatar || 1 // 若后端无avatar字段，默认1
           };
         })
-        .catch(() => {
-          this.$message.error('获取用户详细信息失败');
-        });
+        .catch(() => {}); // 暂时隐藏 details 报错通知
     },
     saveUserDetails() {
+      // 确保 user_id 字段有值
+      if (!this.userDetailsForm.user_id) {
+        // 优先用 userInfo.userId 或 userInfo.id
+        this.userDetailsForm.user_id = this.userInfo.userId || this.userInfo.id || '';
+      }
       axios.post('/api/user/details/update', this.userDetailsForm)
         .then(() => {
           this.$message.success('个人信息修改成功');
@@ -481,14 +495,31 @@ export default {
     goToChatView() {
       this.$router.push({ path: '/ChatView' });
     },
+    selectAvatar(id) {
+      this.userDetailsForm.avatar = Number(id);
+      // 立即触发视图刷新
+      this.$forceUpdate();
+    },
+    navigateToFeedView() {
+      this.$router.push({ path: '/FeedView' });
+    },
   },
   created() {
-    // 优先从 Vuex 获取 userInfo，保证 userId 有效
-    if (this.$store.state.userInfo && this.$store.state.userInfo.userId) {
+    // 1. 优先从 localStorage 恢复 userInfo
+    const localUserInfo = localStorage.getItem('userInfo');
+    let localUserId = null;
+    if (localUserInfo) {
+      const parsed = JSON.parse(localUserInfo);
+      this.$store.commit('setUserInfo', parsed);
       this.userInfo = this.$store.state.userInfo;
+      localUserId = parsed && parsed.userId;
     }
+    // 2. 如果本地 userId 有效，立即拉 schedule，避免初次渲染空白
+    if (localUserId) {
+      this.fetchSchedule();
+    }
+    // 3. 始终发起后端请求，保证数据新鲜
     this.fetchUserInfo();
-    this.fetchSchedule();
     this.fetchNotifications();
     this.fetchUserDetails();
     this.fetchEvents();
@@ -649,6 +680,29 @@ export default {
   font-size: 12px;
   color: #666;
   display: block;
+}
+
+.avatar-select {
+  border: 2px solid #e0e0e0;
+  cursor: pointer;
+  transition: box-shadow 0.2s, border 0.2s, transform 0.2s;
+}
+.avatar-select:hover {
+  border: 2.5px solid #409EFF;
+  box-shadow: 0 0 12px #409EFF, 0 0 0 4px rgba(64,158,255,0.10);
+  transform: scale(1.08);
+  z-index: 2;
+}
+.avatar-selected {
+  border: 3px solid #409EFF !important;
+  box-shadow: 0 0 16px #409EFF, 0 0 0 8px rgba(64,158,255,0.15);
+  transform: scale(1.15);
+  animation: avatar-bubble 0.4s;
+}
+@keyframes avatar-bubble {
+  0% { transform: scale(1); box-shadow: 0 0 0 0 #409EFF; }
+  60% { transform: scale(1.25); box-shadow: 0 0 24px 8px #409EFF; }
+  100% { transform: scale(1.15); box-shadow: 0 0 16px #409EFF, 0 0 0 8px rgba(64,158,255,0.15); }
 }
 
 /* 动画效果 */
