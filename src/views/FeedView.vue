@@ -1,7 +1,48 @@
 <template>
   <div class="campus-feed">
-    <!-- 发布动态卡片 -->
-    <el-card class="post-editor" shadow="always">
+    <!-- 顶部Banner和发帖按钮 -->
+    <el-card class="feed-banner" shadow="hover">
+      <div class="banner-content">
+        <div class="banner-left">
+          <img src="/logo.png" class="banner-logo" />
+          <div class="banner-title">校园广场</div>
+          <div class="banner-desc">发现同学、分享生活、参与社团、交流学习</div>
+        </div>
+        <div class="banner-actions">
+          <el-button type="primary" icon="el-icon-edit" round @click="postDialogVisible = true">
+            发帖
+          </el-button>
+        </div>
+      </div>
+    </el-card>
+
+    <!-- 话题标签栏 -->
+    <el-card class="topic-bar" shadow="never">
+      <el-tag
+        v-for="tag in dynamicTags"
+        :key="tag.value"
+        :type="tag.type"
+        size="medium"
+        effect="dark"
+        class="topic-tag"
+        :hit="newPost.tag === tag.value"
+        @click.native="filterByTag(tag.value)"
+        :closable="false"
+      >
+        <i :class="getTagIcon(tag.value)" style="margin-right:4px;"></i>{{ tag.label }}
+      </el-tag>
+      <el-button v-if="tagFilter" size="mini" @click="clearTagFilter" style="margin-left:12px;">清除筛选</el-button>
+    </el-card>
+
+    <!-- 发帖弹窗 -->
+    <el-dialog
+      title="发布动态"
+      :visible.sync="postDialogVisible"
+      width="600px"
+      top="8vh"
+      :close-on-click-modal="false"
+      custom-class="post-dialog"
+    >
       <div class="editor-header">
         <el-avatar :size="50" :src="resolvedAvatar"></el-avatar>
         <div class="user-info">
@@ -55,14 +96,18 @@
           发布动态
         </el-button>
       </div>
-    </el-card>
+      <span slot="close" class="custom-close" @click="postDialogVisible = false">
+        <i class="el-icon-close"></i>
+      </span>
+    </el-dialog>
 
     <!-- 动态列表 -->
     <el-card class="post-list-container" shadow="always">
       <div v-loading="loading">
+        <el-empty v-if="!posts.length && !loading" description="暂无动态，快来发布你的第一条校园新鲜事吧！" />
         <transition-group name="post-list">
           <el-card
-              v-for="post in posts"
+              v-for="post in filteredPosts"
               :key="post.id"
               class="post-card"
               shadow="hover"
@@ -78,11 +123,14 @@
                       size="mini"
                       effect="plain"
                   >
-                    {{ post.tag.label }}
+                    <i :class="getTagIcon(post.tag.value)" style="margin-right:2px;"></i>{{ post.tag.label }}
                   </el-tag>
                   <span class="time">{{ formatTime(post.time) }}</span>
                 </div>
               </div>
+              <el-tooltip content="关注此人" placement="top">
+                <el-button type="text" icon="el-icon-user-solid" size="mini" @click="followUser(post.user)"></el-button>
+              </el-tooltip>
             </div>
 
             <!-- 内容区域 -->
@@ -102,6 +150,14 @@
                     +{{ post.images.length - 4 }}
                   </div>
                 </el-image>
+              </div>
+              <div class="post-extra-info">
+                <el-tag v-if="post.user.college" size="mini" type="info" effect="plain" class="post-user-college">
+                  <i class="el-icon-school"></i> {{ post.user.college }}
+                </el-tag>
+                <el-tag v-if="post.user.major" size="mini" type="success" effect="plain" class="post-user-major">
+                  <i class="el-icon-notebook-2"></i> {{ post.user.major }}
+                </el-tag>
               </div>
             </div>
 
@@ -131,6 +187,12 @@
               <el-tooltip content="分享" placement="top">
                 <div class="action-item">
                   <i class="el-icon-share"></i>
+                </div>
+              </el-tooltip>
+
+              <el-tooltip content="举报" placement="top">
+                <div class="action-item" @click="reportPost(post)">
+                  <i class="el-icon-warning-outline"></i>
                 </div>
               </el-tooltip>
             </div>
@@ -219,7 +281,9 @@ export default {
       loading: false,
       totalPosts: 0,
       pageSize: 10,
-      currentPage: 1 // 当前页码
+      currentPage: 1, // 当前页码
+      postDialogVisible: false, // 控制发帖弹窗显示
+      tagFilter: '', // 当前筛选的话题标签
     }
   },
   watch: {
@@ -250,6 +314,10 @@ export default {
       }
       // 网络头像
       return avatar;
+    },
+    filteredPosts() {
+      if (!this.tagFilter) return this.posts;
+      return this.posts.filter(post => post.tag && post.tag.value === this.tagFilter);
     }
   },
   methods: {
@@ -266,6 +334,7 @@ export default {
         this.$message.success('动态发布成功！')
         this.posts.unshift(response.data) // 将新动态添加到列表顶部
         this.newPost = { content: '', images: [], tag: '' } // 重置输入框
+        this.postDialogVisible = false // 关闭弹窗
       } catch (error) {
         this.$message.error('发布失败，请稍后重试！')
       }
@@ -312,6 +381,42 @@ export default {
       } finally {
         this.loading = false
       }
+    },
+    filterByTag(tagValue) {
+      this.tagFilter = tagValue;
+    },
+    clearTagFilter() {
+      this.tagFilter = '';
+    },
+    getTagIcon(tagValue) {
+      switch(tagValue) {
+        case 'campus': return 'el-icon-office-building';
+        case 'club': return 'el-icon-flag';
+        case 'study': return 'el-icon-notebook-2';
+        case 'market': return 'el-icon-shopping-cart-2';
+        default: return 'el-icon-collection';
+      }
+    },
+    followUser(user) {
+      this.$message.success(`已关注 ${user.name}`);
+    },
+    reportPost(post) {
+      this.$message.warning('举报功能暂未开放，敬请期待！');
+    },
+    async loadPosts() {
+      this.loading = true;
+      try {
+        const response = await axios.get('/api/posts', {
+          params: { page: this.currentPage, pageSize: this.pageSize, tag: this.tagFilter }
+        });
+        this.posts = response.data.posts || [];
+        this.totalPosts = response.data.total || 0;
+      } catch (error) {
+        this.$message.error('加载失败，请检查网络或稍后重试！');
+        this.posts = [];
+      } finally {
+        this.loading = false;
+      }
     }
   },
   async created() {
@@ -337,6 +442,12 @@ export default {
   max-width: 900px;
   margin: 30px auto;
   padding: 0 20px;
+
+  .feed-header-bar {
+    display: flex;
+    justify-content: flex-end;
+    margin-bottom: 20px;
+  }
 
   .post-editor {
     margin-bottom: 40px;
@@ -370,6 +481,101 @@ export default {
 
       .topic-select {
         width: 180px;
+      }
+    }
+  }
+
+  .post-dialog {
+    border-radius: 16px;
+    overflow: visible;
+
+    .el-dialog__header {
+      padding: 18px 24px 0 24px;
+    }
+
+    .el-dialog__body {
+      padding: 24px 32px 8px 32px;
+    }
+  }
+
+  .custom-close {
+    position: absolute;
+    right: 18px;
+    top: 18px;
+    font-size: 22px;
+    color: #888;
+    cursor: pointer;
+    z-index: 10;
+    transition: color 0.2s;
+
+    &:hover {
+      color: #f56c6c;
+    }
+  }
+
+  .feed-banner {
+    margin-bottom: 24px;
+    background: linear-gradient(90deg, #e3f2fd 0%, #fff 100%);
+    border-radius: 18px;
+    border: none;
+    box-shadow: 0 2px 12px rgba(33,150,243,0.08);
+
+    .banner-content {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 18px 32px 12px 32px;
+
+      .banner-left {
+        display: flex;
+        align-items: center;
+
+        .banner-logo {
+          width: 60px;
+          height: 60px;
+          border-radius: 16px;
+          margin-right: 22px;
+          box-shadow: 0 2px 8px rgba(33,150,243,0.10);
+        }
+
+        .banner-title {
+          font-size: 28px;
+          font-weight: bold;
+          color: #1976d2;
+          margin-right: 18px;
+        }
+
+        .banner-desc {
+          font-size: 16px;
+          color: #666;
+          margin-left: 8px;
+        }
+      }
+
+      .banner-actions {
+        display: flex;
+        align-items: center;
+      }
+    }
+  }
+
+  .topic-bar {
+    margin-bottom: 18px;
+    background: #f5f7fa;
+    border-radius: 12px;
+    border: none;
+    box-shadow: 0 1px 6px rgba(33,150,243,0.04);
+    padding: 10px 24px 6px 24px;
+
+    .topic-tag {
+      margin-right: 12px;
+      font-size: 15px;
+      cursor: pointer;
+      transition: background 0.2s, color 0.2s;
+
+      &:hover {
+        background: #e3f2fd;
+        color: #1976d2;
       }
     }
   }
@@ -449,6 +655,29 @@ export default {
             align-items: center;
             justify-content: center;
             font-size: 22px;
+          }
+        }
+      }
+
+      .post-extra-info {
+        margin-top: 8px;
+        display: flex;
+        gap: 10px;
+
+        .post-user-college,
+        .post-user-major {
+          margin-right: 6px;
+          display: flex;
+          align-items: center;
+          font-size: 14px;
+          color: #555;
+          background-color: #f0f2f5;
+          padding: 5px 10px;
+          border-radius: 12px;
+
+          i {
+            margin-right: 4px;
+            font-size: 16px;
           }
         }
       }
