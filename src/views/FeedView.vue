@@ -1,10 +1,12 @@
+//  github.com/muxi3302159484 
 <template>
   <div class="campus-feed">
     <!-- 顶部Banner和发帖按钮 -->
     <el-card class="feed-banner" shadow="hover">
       <div class="banner-content">
         <div class="banner-left">
-          <img src="/logo.png" class="banner-logo" />
+          <!-- <img src="/logo.png" class="banner-logo" /> -->
+          <i class="el-icon-s-platform banner-logo" style="font-size:60px;color:#1976d2;"></i>
           <div class="banner-title">校园广场</div>
           <div class="banner-desc">发现同学、分享生活、参与社团、交流学习</div>
         </div>
@@ -63,10 +65,12 @@
           <el-upload
             action="/api/upload"
             list-type="picture-card"
-            :on-success="handleUploadSuccess"
-            :file-list="newPost.images"
+            :file-list="uploadFileList"
             :limit="9"
-            :auto-upload="true"
+            :auto-upload="false"
+            :on-change="handleImageChange"
+            :on-remove="handleImageRemove"
+            :before-upload="beforeImageUpload"
           >
             <i class="el-icon-plus"></i>
           </el-upload>
@@ -114,7 +118,7 @@
           >
             <!-- 头部 -->
             <div class="post-header">
-              <el-avatar :size="50" :src="post.user.avatar"></el-avatar>
+              <el-avatar :size="50" :src="getAvatarSrc(post.user.avatar)"></el-avatar>
               <div class="post-user-info">
                 <h4 class="username">{{ post.user.name }}</h4>
                 <div class="post-meta">
@@ -220,7 +224,7 @@
     >
       <div class="comment-list">
         <div v-for="comment in currentPost.comments || []" :key="comment.id" class="comment-item">
-          <el-avatar :size="40" :src="comment.user.avatar"></el-avatar>
+          <el-avatar :size="40" :src="getAvatarSrc(comment.user.avatar)"></el-avatar>
           <div class="comment-content">
             <div class="comment-header">
               <span class="username">{{ comment.user.name }}</span>
@@ -256,12 +260,16 @@ import axios from 'axios'
 
 export default {
   data() {
+    // 只从 localStorage 获取 userId，兼容字符串和数字
+    let userId = localStorage.getItem('userId');
+    if (userId === null || userId === undefined || userId === 'null' || userId === '') userId = '';
     return {
       currentUser: {
-        name: this.$store?.state?.userInfo?.name || '',
-        avatar: this.$store?.state?.userInfo?.avatar || '',
-        college: this.$store?.state?.userInfo?.college || this.$store?.state?.userInfo?.department || this.$store?.state?.userInfo?.schoolName || '',
-        major: this.$store?.state?.userInfo?.major || this.$store?.state?.userInfo?.specialty || ''
+        id: userId,
+        name: '',
+        avatar: '',
+        college: '',
+        major: ''
       },
       newPost: {
         content: '',
@@ -284,26 +292,20 @@ export default {
       currentPage: 1, // 当前页码
       postDialogVisible: false, // 控制发帖弹窗显示
       tagFilter: '', // 当前筛选的话题标签
+      uploadFileList: [] // 上传文件列表
     }
   },
   watch: {
-    // 保证切换用户后 currentUser 也能同步
-    '$store.state.userInfo': {
-      handler(val) {
-        this.currentUser.name = val?.name || '';
-        this.currentUser.avatar = val?.avatar || '';
-        this.currentUser.college = val?.college || val?.department || val?.schoolName || '';
-        this.currentUser.major = val?.major || val?.specialty || '';
-      },
-      deep: true,
-      immediate: true
-    }
+    // 只监听 localStorage 变化（如需支持多标签页同步，可用 storage 事件）
   },
   computed: {
     resolvedAvatar() {
-      // 兼容本地头像和网络头像
       const avatar = this.currentUser.avatar;
       if (!avatar) return require('@/assets/avatars/avatar_1.png');
+      // 如果是数字字符串 1-4，自动拼接本地图片
+      if (/^[1-4]$/.test(avatar)) {
+        return require(`@/assets/avatars/avatar_${avatar}.png`);
+      }
       // 如果是本地头像名
       if (/^avatar_\d+\.png$/.test(avatar)) {
         try {
@@ -325,39 +327,121 @@ export default {
       return dayjs(time).format('YYYY-MM-DD HH:mm')
     },
     async publishPost() {
+      // 发帖
       if (!this.newPost.content.trim() || !this.newPost.tag) {
         this.$message.error('请填写完整的动态内容和选择话题！')
         return
       }
       try {
-        const response = await axios.post('/api/posts', this.newPost)
+        const userId = this.currentUser.id;
+        if (!userId || userId === 'null' || userId === undefined) {
+          this.$message.error('用户信息缺失，请重新登录');
+          return;
+        }
+        // 1. 先上传图片（如有缓存文件）
+        let imageUrls = [];
+        if (this.newPost.imageFiles && this.newPost.imageFiles.length) {
+          imageUrls = await this.uploadImages();
+        }
+        // 2. 再发帖，确保 images 字段为图片 URL 数组
+        const postData = {
+          userId,
+          content: this.newPost.content,
+          images: imageUrls,
+          tag: this.newPost.tag
+        };
+        const response = await axios.post('/api/posts', postData)
         this.$message.success('动态发布成功！')
-        this.posts.unshift(response.data) // 将新动态添加到列表顶部
-        this.newPost = { content: '', images: [], tag: '' } // 重置输入框
-        this.postDialogVisible = false // 关闭弹窗
+        this.posts.unshift(response.data)
+        this.newPost = { content: '', images: [], imageFiles: [], tag: '' }
+        this.uploadFileList = [];
+        this.postDialogVisible = false
       } catch (error) {
         this.$message.error('发布失败，请稍后重试！')
       }
     },
-    handleUploadSuccess(response) {
-      this.newPost.images.push(response.url)
+    handleImageChange(file, fileList) {
+      // 图片选择变更
+      // 只保留最后一张图片
+      this.uploadFileList = fileList.slice(-1);
+      this.newPost.imageFiles = fileList.slice(-1).map(f => f.raw).filter(Boolean);
+      this.newPost.images = fileList.slice(-1).map(file => file.url || file.response?.url).filter(Boolean);
     },
-    handleLike(post) {
-      post.isLiked = !post.isLiked
-      post.likes += post.isLiked ? 1 : -1
+    handleImageRemove(file, fileList) {
+      // 移除图片
+      this.uploadFileList = fileList;
+      this.newPost.imageFiles = fileList.map(f => f.raw).filter(Boolean);
+      this.newPost.images = fileList.map(file => file.url || file.response?.url).filter(Boolean);
+    },
+    beforeImageUpload(file) {
+      // 图片上传前校验
+      // 可根据需要校验图片类型/大小，返回 true 允许上传，false 拒绝
+      // 这里只做简单类型校验示例
+      const isImage = file.type.startsWith('image/');
+      if (!isImage) {
+        this.$message.error('只能上传图片文件！');
+        return false;
+      }
+      // 可加大小限制等
+      return true;
+    },
+    async uploadImages() {
+      // 兼容后端单文件上传接口，依次上传所有图片，返回图片URL数组
+      if (!this.newPost.imageFiles || !this.newPost.imageFiles.length) return [];
+      const urls = [];
+      for (const file of this.newPost.imageFiles) {
+        const formData = new FormData();
+        formData.append('file', file); // 注意字段名为file
+        try {
+          // 注意：后端接口为 /api/posts/upload
+          const response = await axios.post('/api/posts/upload', formData, {
+            headers: { 'Content-Type': 'multipart/form-data' }
+          });
+          // 兼容后端返回 { code, message, data: { url } }
+          if (response.data && response.data.code === 200 && response.data.data && response.data.data.url) {
+            urls.push(response.data.data.url);
+          } else {
+            this.$message.error(response.data.message || '图片上传失败！');
+          }
+        } catch (e) {
+          this.$message.error('图片上传失败，请稍后重试！');
+        }
+      }
+      return urls;
     },
     showCommentDialog(post) {
       this.currentPost = { ...post, comments: post.comments || [] } // 确保 comments 存在
       this.commentDialogVisible = true
     },
     async submitComment() {
+      // 发表评论
       if (!this.newComment.trim()) {
         this.$message.error('评论内容不能为空！')
         return
       }
       try {
+        // 获取当前登录用户ID
+        let userId = this.currentUser.id;
+        if (!userId) {
+          // 兼容 Vuex 和 localStorage
+          const storeUser = this.$store && this.$store.state && this.$store.state.userInfo;
+          if (storeUser && (storeUser.userId || storeUser.id)) {
+            userId = storeUser.userId || storeUser.id;
+          } else {
+            const userInfoStr = localStorage.getItem('userInfo');
+            if (userInfoStr) {
+              const userInfo = JSON.parse(userInfoStr);
+              userId = userInfo.userId || userInfo.id;
+            }
+          }
+        }
+        if (!userId) {
+          this.$message.error('用户信息缺失，请重新登录');
+          return;
+        }
         const response = await axios.post(`/api/posts/${this.currentPost.id}/comments`, {
-          content: this.newComment
+          content: this.newComment,
+          userId: userId // 新增 userId 字段
         })
         this.currentPost.comments.push(response.data) // 更新评论列表
         this.newComment = '' // 清空输入框
@@ -404,6 +488,7 @@ export default {
       this.$message.warning('举报功能暂未开放，敬请期待！');
     },
     async loadPosts() {
+      // 加载动态
       this.loading = true;
       try {
         const response = await axios.get('/api/posts', {
@@ -417,9 +502,76 @@ export default {
       } finally {
         this.loading = false;
       }
-    }
+    },
+    getAvatarSrc(avatar) {
+      // 兼容数字、字符串、完整URL、空值
+      if (!avatar) return require('@/assets/avatars/avatar_1.png');
+      if (typeof avatar === 'number' || (typeof avatar === 'string' && /^\d+$/.test(avatar))) {
+        try {
+          return require(`@/assets/avatars/avatar_${avatar}.png`);
+        } catch (e) {
+          return require('@/assets/avatars/avatar_1.png');
+        }
+      }
+      // 若为URL或base64
+      return avatar;
+    },
+    async handleLike(post) {
+      // 点赞
+      // 获取当前登录用户ID
+      let userId = this.currentUser.id;
+      if (!userId) {
+        // 兼容 Vuex 和 localStorage
+        const storeUser = this.$store && this.$store.state && this.$store.state.userInfo;
+        if (storeUser && (storeUser.userId || storeUser.id)) {
+          userId = storeUser.userId || storeUser.id;
+        } else {
+          const userInfoStr = localStorage.getItem('userInfo');
+          if (userInfoStr) {
+            const userInfo = JSON.parse(userInfoStr);
+            userId = userInfo.userId || userInfo.id;
+          }
+        }
+      }
+      if (!userId) {
+        this.$message.error('用户信息缺失，请重新登录');
+        return;
+      }
+      try {
+        const response = await axios.post(`/api/posts/${post.id}/like`, {
+          userId: userId
+        });
+        // 假设后端返回最新点赞数和状态
+        post.likes = response.data.likes;
+        post.isLiked = response.data.isLiked;
+      } catch (e) {
+        this.$message.error('点赞失败，请稍后重试！');
+      }
+    },
   },
   async created() {
+    // 优先从 localStorage 获取 userInfo
+    let userInfo = null;
+    try {
+      const userInfoStr = localStorage.getItem('userInfo');
+      if (userInfoStr) {
+        userInfo = JSON.parse(userInfoStr);
+      }
+    } catch {}
+    let userId = '';
+    if (userInfo && (userInfo.userId || userInfo.id)) {
+      userId = userInfo.userId || userInfo.id;
+      this.currentUser.id = userId;
+      this.currentUser.name = userInfo.name || userInfo.username || '';
+      this.currentUser.avatar = userInfo.avatar || '';
+      this.currentUser.college = userInfo.college || '';
+      this.currentUser.major = userInfo.major || '';
+    } else {
+      // fallback: 兼容旧逻辑
+      userId = localStorage.getItem('userId');
+      if (userId === null || userId === undefined || userId === 'null' || userId === '') userId = '';
+      this.currentUser.id = userId;
+    }
     this.loading = true
     try {
       const response = await axios.get('/api/posts', {

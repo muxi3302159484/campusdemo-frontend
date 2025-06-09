@@ -1,3 +1,5 @@
+//  github.com/muxi3302159484 
+
 <template>
   <div class="login-container">
     <!-- 背景图案 -->
@@ -113,10 +115,7 @@ export default {
     async handleRegister() {
       this.$refs.registerForm.validate(async (valid) => {
         if (valid) {
-          if (this.registerForm.role === "admin") {
-            this.$message.error("您暂时无权限选择管理员身份！");
-            return;
-          }
+          // 允许选择管理员身份，不再做前端限制
           try {
             const response = await register(this.registerForm);
             ElMessage.success("注册成功，请登录");

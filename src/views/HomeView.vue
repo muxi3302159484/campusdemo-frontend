@@ -1,5 +1,17 @@
+//  github.com/muxi3302159484 
+
 <template>
   <div class="home">
+    <!-- 顶部Banner区 -->
+    <div class="home-banner">
+      <img src="@/assets/logo.png" class="banner-logo" />
+      <div class="banner-info">
+        <div class="banner-title">欢迎来到校园社交系统</div>
+        <div class="banner-desc">Hi，{{ userInfo.name || '同学' }}，发现同学、分享生活、交流学习</div>
+      </div>
+      <!-- <el-avatar :src="getAvatarSrc(userInfo.avatar)" :size="60" class="banner-avatar" /> -->
+    </div>
+
     <!-- 背景图片 -->
     <div class="background-image"></div>
 
@@ -8,37 +20,19 @@
       <div class="header-left">
         <el-avatar
           class="user-avatar"
-          :src="userInfo.avatar"
-          @mouseenter="showUserInfo"
-          @mouseleave="hideUserInfo"
+          :src="getAvatarSrc(userInfo.avatar)"
         >
-          <el-image
-            slot="default"
-            src="@/assets/default-avatar.png"
-            fit="cover"
-          ></el-image>
+          <el-image slot="default" src="@/assets/default-avatar.png" fit="cover"></el-image>
         </el-avatar>
         <span class="app-title">校园社交系统</span>
       </div>
       <div class="header-right">
         <el-badge :value="unreadNotificationsCount" class="notification-icon" v-if="unreadNotificationsCount > 0">
-          <el-icon name="bell" @mouseenter="onIconHover" @mouseleave="onIconLeave" @click="onIconClick"></el-icon>
+          <el-icon name="bell"></el-icon>
         </el-badge>
-        <el-icon name="bell" class="notification-icon" v-else @mouseenter="onIconHover" @mouseleave="onIconLeave" @click="onIconClick"></el-icon>
-        <el-button
-          type="primary"
-          class="feed-button interactive-button"
-          @click="navigateToFeedView"
-        >
-          动态
-        </el-button>
-        <el-button
-          type="danger"
-          class="logout-button"
-          @click="logout"
-        >
-          退出登录
-        </el-button>
+        <el-icon name="bell" class="notification-icon" v-else></el-icon>
+        <el-button type="primary" class="feed-button interactive-button" @click="navigateToFeedView">动态</el-button>
+        <el-button type="danger" class="logout-button" @click="logout">退出登录</el-button>
       </div>
     </el-header>
 
@@ -46,69 +40,76 @@
       <!-- 左侧菜单 -->
       <el-aside width="250px" class="sidebar">
         <el-menu :default-active="activeMenu" @select="handleMenuSelect">
-          <el-menu-item index="1">用户信息</el-menu-item>
-          <el-menu-item index="2">动态</el-menu-item>
-          <el-menu-item index="3">课程</el-menu-item>
-          <el-menu-item index="4">活动</el-menu-item>
-          <el-menu-item index="5">社团</el-menu-item>
-          <el-menu-item index="6">消息</el-menu-item>
-          <el-menu-item index="7">搜索</el-menu-item>
-          <el-menu-item index="8">设置</el-menu-item>
+          <el-menu-item index="1"><i class="el-icon-user"></i> 用户信息</el-menu-item>
+          <el-menu-item index="2"><i class="el-icon-chat-dot-round"></i> 动态</el-menu-item>
+          <el-menu-item index="3"><i class="el-icon-date"></i> 课程</el-menu-item>
+          <el-menu-item index="4"><i class="el-icon-trophy"></i> 活动</el-menu-item>
+          <el-menu-item index="6"><i class="el-icon-message"></i> 消息</el-menu-item>
+          <!-- <el-menu-item index="7"><i class="el-icon-search"></i> 搜索</el-menu-item> --> <!-- 搜索菜单已移除 -->
+          <el-menu-item index="8"><i class="el-icon-setting"></i> 设置</el-menu-item>
         </el-menu>
       </el-aside>
 
       <!-- 主内容 -->
       <el-main>
         <div v-if="activeMenu === '1'">
-          <!-- 用户信息模块 -->
-          <el-card shadow="hover" class="card">
-            <h3 class="card-title">个人资料</h3>
-            <p>姓名: {{ userInfo.name }}</p>
-            <p>角色: {{ userInfo.role }}</p>
-            <p>邮箱: {{ userInfo.email }}</p>
+          <!-- 个人资料卡片美化 -->
+          <el-card shadow="hover" class="card profile-card">
+            <div class="profile-header">
+              <el-avatar :src="getAvatarSrc(userInfo.avatar)" :size="80" class="profile-avatar" />
+              <div class="profile-info">
+                <div class="profile-name">{{ userInfo.name || '未设置昵称' }}</div>
+                <div class="profile-role"><i class="el-icon-user"></i> {{ userInfo.role || '学生' }}</div>
+                <div class="profile-meta">
+                  <span><i class="el-icon-school"></i> {{ userInfo.college || '未知学院' }}</span>
+                  <span><i class="el-icon-notebook-2"></i> {{ userInfo.major || '未知专业' }}</span>
+                </div>
+                <div class="profile-signature" v-if="userInfo.signature">{{ userInfo.signature }}</div>
+                <div class="profile-level" v-if="userInfo.level"><i class="el-icon-star-on"></i> 等级：{{ userInfo.level }}</div>
+              </div>
+            </div>
           </el-card>
-          <el-card shadow="hover" class="card">
-            <h3 class="card-title">通知</h3>
+
+          <!-- 通知卡片美化 -->
+          <el-card shadow="hover" class="card notification-card">
+            <h3 class="card-title"><i class="el-icon-bell"></i> 通知</h3>
             <el-timeline>
               <el-timeline-item
                 v-for="(notification, index) in notifications"
                 :key="index"
                 :timestamp="notification.time"
+                :color="!notification.read ? '#409EFF' : '#bbb'"
                 @click="markNotificationAsRead(index); navigateTo(notification.link)"
                 class="notification-item"
               >
-                {{ notification.content }}
+                <i class="el-icon-message-solid notification-icon-timeline"></i>
+                <span :class="{ 'unread': !notification.read }">{{ notification.content }}</span>
               </el-timeline-item>
             </el-timeline>
           </el-card>
         </div>
 
         <div v-if="activeMenu === '2'">
-          <!-- 动态模块 -->
-          <el-card shadow="hover" class="card">
-            <h3 class="card-title">好友动态</h3>
+          <!-- 动态模块美化 -->
+          <el-card shadow="hover" class="card feed-card">
+            <h3 class="card-title"><i class="el-icon-chat-dot-round"></i> 好友动态</h3>
             <p>显示好友的最新动态...</p>
             <el-button type="primary" @click="navigateToFeedView">进入动态广场</el-button>
-          </el-card>
-          <el-card shadow="hover" class="card">
-            <h3 class="card-title">社团动态</h3>
-            <p>显示社团的最新动态...</p>
           </el-card>
         </div>
 
         <div v-if="activeMenu === '3'">
-          <!-- 课程模块 -->
-          <el-card shadow="hover" class="card">
-            <h3 class="card-title">课程表</h3>
-            <el-button
-              type="primary"
-              size="small"
-              @click="toggleEditMode"
-              class="edit-button"
-            >
-              {{ isEditing ? '保存' : '编辑' }}
-            </el-button>
-            <el-table :data="schedule" border>
+          <!-- 课程模块美化 -->
+          <el-card shadow="hover" class="card course-card">
+            <div class="course-header">
+              <h3 class="card-title"><i class="el-icon-date"></i> 课程表</h3>
+              <div class="course-stats">
+                <span><i class="el-icon-collection"></i> 本周课程数：{{ totalCourseCount }}</span>
+                <span class="next-course" v-if="nextCourse">下节课：{{ nextCourse.course }} @ {{ nextCourse.location }}</span>
+              </div>
+              <el-button type="primary" size="small" @click="toggleEditMode" class="edit-button">{{ isEditing ? '保存' : '编辑' }}</el-button>
+            </div>
+            <el-table :data="schedule" border class="course-table">
               <el-table-column prop="period" label="节次">
                 <template v-slot="scope">
                   <span>{{ scope.row.period }}</span>
@@ -122,18 +123,8 @@
                 <template v-slot="scope">
                   <div class="course-cell" :class="{ 'has-course': scope.row.courses[index].course }">
                     <div v-if="isEditing">
-                      <el-input
-                        v-model="scope.row.courses[index].course"
-                        size="small"
-                        placeholder="课程"
-                        class="course-input"
-                      ></el-input>
-                      <el-input
-                        v-model="scope.row.courses[index].location"
-                        size="small"
-                        placeholder="地点"
-                        class="location-input"
-                      ></el-input>
+                      <el-input v-model="scope.row.courses[index].course" size="small" placeholder="课程" class="course-input"></el-input>
+                      <el-input v-model="scope.row.courses[index].location" size="small" placeholder="地点" class="location-input"></el-input>
                     </div>
                     <div v-else>
                       <span class="course-text">{{ scope.row.courses[index].course }}</span>
@@ -144,17 +135,17 @@
               </el-table-column>
             </el-table>
           </el-card>
-          <el-card shadow="hover" class="card">
-            <h3 class="card-title">课程公告</h3>
+          <el-card shadow="hover" class="card course-announcement-card">
+            <h3 class="card-title"><i class="el-icon-info"></i> 课程公告</h3>
             <p>显示课程相关的最新公告...</p>
           </el-card>
         </div>
 
         <div v-if="activeMenu === '4'">
-          <!-- 活动模块 -->
-          <el-card shadow="hover" class="card">
+          <!-- 活动模块美化 -->
+          <el-card shadow="hover" class="card event-card">
             <div style="display: flex; align-items: center; justify-content: space-between;">
-              <h3 class="card-title">活动列表</h3>
+              <h3 class="card-title"><i class="el-icon-trophy"></i> 活动列表</h3>
               <el-tooltip content="刷新活动列表" placement="top">
                 <el-button icon="el-icon-refresh" size="mini" circle @click="fetchEvents" style="margin-right: 8px;" />
               </el-tooltip>
@@ -182,53 +173,29 @@
               </el-table-column>
             </el-table>
           </el-card>
-          <el-card shadow="hover" class="card">
-            <h3 class="card-title">活动报名</h3>
+          <el-card shadow="hover" class="card event-signup-card">
+            <h3 class="card-title"><i class="el-icon-edit"></i> 活动报名</h3>
             <p>用户可以报名参加活动...</p>
           </el-card>
         </div>
 
-        <div v-if="activeMenu === '5'">
-          <!-- 社团模块 -->
-          <el-card shadow="hover" class="card">
-            <h3 class="card-title">社团列表</h3>
-            <p>显示校园内的所有社团...</p>
-          </el-card>
-          <el-card shadow="hover" class="card">
-            <h3 class="card-title">社团活动</h3>
-            <p>显示用户加入的社团活动...</p>
-          </el-card>
-        </div>
-
         <div v-if="activeMenu === '6'">
-          <!-- 消息模块 -->
-          <el-card shadow="hover" class="card">
-            <h3 class="card-title">私信</h3>
+          <!-- 消息模块美化 -->
+          <el-card shadow="hover" class="card message-card">
+            <h3 class="card-title"><i class="el-icon-message"></i> 私信</h3>
             <p>用户可以与好友私信交流...</p>
             <el-button type="primary" @click="goToChatView">进入私信</el-button>
           </el-card>
         </div>
 
         <div v-if="activeMenu === '7'">
-          <!-- 搜索模块 -->
-          <el-card shadow="hover" class="card">
-            <h3 class="card-title">搜索用户</h3>
-            <p>用户可以搜索并添加好友...</p>
-          </el-card>
-          <el-card shadow="hover" class="card">
-            <h3 class="card-title">搜索社团</h3>
-            <p>用户可以搜索并加入社团...</p>
-          </el-card>
-          <el-card shadow="hover" class="card">
-            <h3 class="card-title">搜索活动</h3>
-            <p>用户可以搜索并报名活动...</p>
-          </el-card>
+          <!-- 搜索模块已移除 -->
         </div>
 
         <div v-if="activeMenu === '8'">
-          <!-- 设置模块 -->
-          <el-card shadow="hover" class="card">
-            <h3 class="card-title">账户设置</h3>
+          <!-- 设置模块美化 -->
+          <el-card shadow="hover" class="card setting-card">
+            <h3 class="card-title"><i class="el-icon-setting"></i> 账户设置</h3>
             <el-form :model="userDetailsForm" ref="userDetailsForm" label-width="120px" style="max-width: 500px; margin: 0 auto;">
               <el-form-item label="用户ID">
                 <el-input v-model="userDetailsForm.user_id" :disabled="true"></el-input>
@@ -239,38 +206,35 @@
               <el-form-item label="最近登录">
                 <el-input v-model="userDetailsForm.last_login" :disabled="true"></el-input>
               </el-form-item>
-              <el-form-item label="账号状态">
-                <el-switch v-model="userDetailsForm.is_active" active-text="激活" inactive-text="禁用"></el-switch>
-              </el-form-item>
-              <el-form-item label="邮箱验证">
-                <el-switch v-model="userDetailsForm.is_email_verified" active-text="已验证" inactive-text="未验证"></el-switch>
-              </el-form-item>
-              <el-form-item label="学校ID">
-                <el-input v-model="userDetailsForm.school_id"></el-input>
-              </el-form-item>
-              <el-form-item label="院系ID">
-                <el-input v-model="userDetailsForm.department_id"></el-input>
-              </el-form-item>
               <el-form-item label="头像">
                 <div style="display: flex; gap: 16px;">
                   <div v-for="id in [1,2,3,4]" :key="id" style="display: flex; flex-direction: column; align-items: center;">
                     <el-avatar
                       :src="require(`@/assets/avatars/avatar_${id}.png`)"
                       :class="['avatar-select', { 'avatar-selected': Number(userDetailsForm.avatar) === Number(id) }]"
-                      size="64"
+                      :size="64"
                       @click.native="selectAvatar(id)"
                     />
                     <span v-if="Number(userDetailsForm.avatar) === Number(id)" style="color:#409EFF;font-size:12px;">已选</span>
                   </div>
                 </div>
               </el-form-item>
+              <el-form-item label="姓名">
+                <el-input v-model="userDetailsForm.name" placeholder="请输入姓名或昵称"></el-input>
+              </el-form-item>
+              <el-form-item label="学院">
+                <el-input v-model="userDetailsForm.college" placeholder="请输入学院名称"></el-input>
+              </el-form-item>
+              <el-form-item label="专业">
+                <el-input v-model="userDetailsForm.major" placeholder="请输入专业名称"></el-input>
+              </el-form-item>
               <el-form-item>
                 <el-button type="primary" @click="saveUserDetails">保存修改</el-button>
               </el-form-item>
             </el-form>
           </el-card>
-          <el-card shadow="hover" class="card">
-            <h3 class="card-title">隐私设置</h3>
+          <el-card shadow="hover" class="card privacy-card">
+            <h3 class="card-title"><i class="el-icon-lock"></i> 隐私设置</h3>
             <p>用户可以设置隐私权限...</p>
           </el-card>
         </div>
@@ -326,6 +290,26 @@ export default {
     unreadNotificationsCount() {
       return this.notifications.filter(notification => !notification.read).length;
     },
+    // 新增：课程总数和下节课
+    totalCourseCount() {
+      let count = 0;
+      this.schedule.forEach(row => {
+        row.courses.forEach(c => { if (c.course) count++; });
+      });
+      return count;
+    },
+    nextCourse() {
+      // 简单找第一个有课的节次
+      for (let i = 0; i < this.schedule.length; i++) {
+        for (let j = 0; j < this.schedule[i].courses.length; j++) {
+          const c = this.schedule[i].courses[j];
+          if (c.course) {
+            return c;
+          }
+        }
+      }
+      return null;
+    }
   },
   filters: {
     formatDateTime(val) {
@@ -347,14 +331,50 @@ export default {
       this.activeMenu = index;
     },
     fetchUserInfo() {
-      axios.get('/api/user/info')
+      // 获取token
+      const token = localStorage.getItem('authToken');
+      axios.get('/api/user/info', {
+        headers: token ? { Authorization: `Bearer ${token}` } : {}
+      })
         .then(response => {
-          const oldUserId = this.$store.state.userInfo && this.$store.state.userInfo.userId;
-          this.$store.commit('setUserInfo', response.data);
+          // 兼容扁平结构和嵌套结构
+          let userInfoRaw = response.data || {};
+          let user = userInfoRaw.user || {};
+          let userDetails = userInfoRaw.userDetails || {};
+          // 如果是扁平结构，userDetails和user都为空，直接用userInfoRaw
+          if (Object.keys(user).length === 0 && Object.keys(userDetails).length === 0) {
+            user = userInfoRaw;
+            userDetails = userInfoRaw;
+          }
+          const userInfo = {
+            userId: user.userId || user.id || userDetails.userId || userDetails.id,
+            // 优先取 userDetails.name，其次 user.name，最后 user.username
+            name: userDetails.name || user.name || '',
+            role: userDetails.role || user.role || '',
+            college: userDetails.college || user.college || '',
+            major: userDetails.major || user.major || '',
+            avatar: userDetails.avatar || user.avatar || '',
+            email: user.email || userDetails.email || '',
+            studentId: user.studentId || userDetails.studentId || '',
+            registration_date: userDetails.registrationDate || user.registrationDate || '',
+            last_login: userDetails.lastLogin || user.lastLogin || '',
+            is_active: userDetails.isActive || user.isActive || false,
+            is_email_verified: userDetails.isEmailVerified || user.isEmailVerified || false,
+            school_id: userDetails.schoolId || user.schoolId || '',
+            department_id: userDetails.departmentId || user.departmentId || '',
+            signature: userDetails.signature || user.signature || '',
+            level: userDetails.level || user.level || 1
+          };
+          this.$store.commit('setUserInfo', userInfo);
           this.userInfo = this.$store.state.userInfo;
-          localStorage.setItem('userInfo', JSON.stringify(response.data));
+          localStorage.setItem('userInfo', JSON.stringify(userInfo));
+          // 同步基础信息到 userDetailsForm，保证账户设置页展示
+          this.userDetailsForm.user_id = userInfo.userId || '';
+          this.userDetailsForm.registration_date = this.$options.filters.formatDateTime(userInfo.registration_date) || '';
+          this.userDetailsForm.last_login = this.$options.filters.formatDateTime(userInfo.last_login) || '';
           // 只有 userId 变化时才重新拉 schedule，避免重复请求
-          const newUserId = response.data && response.data.userId;
+          const oldUserId = this.$store.state.userInfo && this.$store.state.userInfo.userId;
+          const newUserId = userInfo.userId;
           if (newUserId && newUserId !== oldUserId) {
             this.fetchSchedule();
           }
@@ -438,7 +458,11 @@ export default {
         });
     },
     fetchNotifications() {
-      axios.get('/api/user/notifications')
+      // 获取token
+      const token = localStorage.getItem('authToken');
+      axios.get('/api/user/notifications', {
+        headers: token ? { Authorization: `Bearer ${token}` } : {}
+      })
         .then(response => {
           this.notifications = (response.data || []).map(notification => ({
             ...notification,
@@ -449,19 +473,6 @@ export default {
           console.error('获取通知失败:', error);
           this.$message.error('获取通知失败');
         });
-    },
-    fetchUserDetails() {
-      axios.get('/api/user/details', { params: { userId: this.userInfo.id } })
-        .then(res => {
-          // 假设后端返回字段与userDetailsForm一致
-          this.userDetailsForm = {
-            ...res.data,
-            is_active: !!res.data.is_active,
-            is_email_verified: !!res.data.is_email_verified,
-            avatar: res.data.avatar || 1 // 若后端无avatar字段，默认1
-          };
-        })
-        .catch(() => {}); // 暂时隐藏 details 报错通知
     },
     saveUserDetails() {
       // 确保 user_id 字段有值
@@ -503,6 +514,20 @@ export default {
     navigateToFeedView() {
       this.$router.push({ path: '/FeedView' });
     },
+    getAvatarSrc(avatar) {
+      // 兼容数字、字符串、完整URL、空值
+      if (!avatar) return require('@/assets/avatars/avatar_1.png');
+      if (typeof avatar === 'number' || (typeof avatar === 'string' && /^\d+$/.test(avatar))) {
+        // 纯数字或数字字符串，拼头像路径
+        try {
+          return require(`@/assets/avatars/avatar_${avatar}.png`);
+        } catch (e) {
+          return require('@/assets/avatars/avatar_1.png');
+        }
+      }
+      // 若为URL或base64
+      return avatar;
+    },
   },
   created() {
     // 1. 优先从 localStorage 恢复 userInfo
@@ -521,7 +546,6 @@ export default {
     // 3. 始终发起后端请求，保证数据新鲜
     this.fetchUserInfo();
     this.fetchNotifications();
-    this.fetchUserDetails();
     this.fetchEvents();
   },
 };
@@ -536,6 +560,48 @@ export default {
   background-color: #f5f5f5;
   position: relative;
   overflow: hidden;
+}
+
+/* 顶部Banner区 */
+.home-banner {
+  width: 100%;
+  min-height: 90px;
+  background: linear-gradient(90deg, #e3f2fd 0%, #fff 100%);
+  display: flex;
+  align-items: center;
+  padding: 24px 40px 12px 40px;
+  border-radius: 0 0 24px 24px;
+  box-shadow: 0 2px 12px rgba(33,150,243,0.08);
+  margin-bottom: 18px;
+  position: relative;
+  z-index: 1;
+}
+.banner-logo {
+  width: 60px;
+  height: 60px;
+  border-radius: 16px;
+  margin-right: 24px;
+  box-shadow: 0 2px 8px rgba(33,150,243,0.12);
+}
+.banner-info {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.banner-title {
+  font-size: 28px;
+  font-weight: bold;
+  color: #1976d2;
+}
+.banner-desc {
+  font-size: 16px;
+  color: #555;
+}
+.banner-avatar {
+  margin-left: 32px;
+  border: 3px solid #90caf9;
+  box-shadow: 0 2px 8px #90caf9;
 }
 
 /* 背景图片 */
@@ -638,7 +704,10 @@ export default {
   font-size: 18px;
   font-weight: 500;
   margin-bottom: 15px;
-  color: #333333;
+  color: #1976d2;
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 
 .notification-item {
@@ -656,53 +725,40 @@ export default {
 
 .course-cell {
   display: flex;
-  align-items: center;
+  flex-direction: column;
+  align-items: flex-start;
   justify-content: center;
-  height: 40px;
+  height: 48px;
+  padding: 4px 8px;
   position: relative;
+  gap: 2px;
 }
 
-.course-cell.has-course .course-text {
-  animation: fade-in-out 2s infinite;
+.course-cell.has-course {
+  background: #e3f2fd;
+  border-radius: 8px;
+  transition: background 0.2s;
 }
-
+.course-cell.has-course:hover {
+  background: #bbdefb;
+}
 .course-text {
-  font-size: 14px;
-  color: #333;
+  font-size: 15px;
+  color: #1976d2;
+  font-weight: 500;
+  line-height: 1.2;
+  margin-bottom: 2px;
 }
-
+.location-text {
+  font-size: 13px;
+  color: #888;
+  line-height: 1.2;
+  margin-left: 0;
+}
 .course-input,
 .location-input {
-  margin-bottom: 5px;
-}
-
-.location-text {
-  font-size: 12px;
-  color: #666;
-  display: block;
-}
-
-.avatar-select {
-  border: 2px solid #e0e0e0;
-  cursor: pointer;
-  transition: box-shadow 0.2s, border 0.2s, transform 0.2s;
-}
-.avatar-select:hover {
-  border: 2.5px solid #409EFF;
-  box-shadow: 0 0 12px #409EFF, 0 0 0 4px rgba(64,158,255,0.10);
-  transform: scale(1.08);
-  z-index: 2;
-}
-.avatar-selected {
-  border: 3px solid #409EFF !important;
-  box-shadow: 0 0 16px #409EFF, 0 0 0 8px rgba(64,158,255,0.15);
-  transform: scale(1.15);
-  animation: avatar-bubble 0.4s;
-}
-@keyframes avatar-bubble {
-  0% { transform: scale(1); box-shadow: 0 0 0 0 #409EFF; }
-  60% { transform: scale(1.25); box-shadow: 0 0 24px 8px #409EFF; }
-  100% { transform: scale(1.15); box-shadow: 0 0 16px #409EFF, 0 0 0 8px rgba(64,158,255,0.15); }
+  margin-bottom: 2px;
+  width: 90px;
 }
 
 /* 动画效果 */
@@ -725,5 +781,140 @@ export default {
   100% {
     transform: scale(1);
   }
+}
+
+.profile-card {
+  background: linear-gradient(90deg, #e3f2fd 0%, #fff 100%);
+  margin-bottom: 18px;
+}
+.profile-header {
+  display: flex;
+  align-items: center;
+  gap: 32px;
+}
+.profile-avatar {
+  border: 3px solid #90caf9;
+  box-shadow: 0 2px 8px #90caf9;
+}
+.profile-info {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.profile-name {
+  font-size: 22px;
+  font-weight: bold;
+  color: #1976d2;
+}
+.profile-role {
+  font-size: 15px;
+  color: #888;
+}
+.profile-meta {
+  font-size: 14px;
+  color: #666;
+  display: flex;
+  gap: 18px;
+}
+.profile-signature {
+  font-size: 14px;
+  color: #888;
+  font-style: italic;
+}
+.profile-level {
+  font-size: 14px;
+  color: #ff9800;
+}
+.notification-card {
+  margin-bottom: 18px;
+}
+.notification-icon-timeline {
+  color: #409EFF;
+  margin-right: 6px;
+}
+.notification-item.unread span {
+  font-weight: bold;
+  color: #1976d2;
+}
+.feed-card, .event-card, .club-card, .message-card, .search-card, .setting-card, .privacy-card {
+  margin-bottom: 18px;
+  border-radius: 16px;
+  box-shadow: 0 2px 12px rgba(33,150,243,0.08);
+}
+.card-title {
+  font-size: 18px;
+  font-weight: 500;
+  margin-bottom: 15px;
+  color: #1976d2;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.course-card {
+  margin-bottom: 18px;
+  border-radius: 16px;
+  box-shadow: 0 2px 12px rgba(33,150,243,0.08);
+}
+.course-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+.course-stats {
+  display: flex;
+  gap: 18px;
+  font-size: 14px;
+  color: #1976d2;
+}
+.next-course {
+  color: #43a047;
+  font-weight: bold;
+}
+.course-table {
+  border-radius: 12px;
+  overflow: hidden;
+}
+.course-cell.has-course {
+  background: #e3f2fd;
+  border-radius: 8px;
+  transition: background 0.2s;
+}
+.course-cell.has-course:hover {
+  background: #bbdefb;
+}
+.club-card, .club-activity-card {
+  background: linear-gradient(90deg, #fffde7 0%, #fff 100%);
+}
+.event-card, .event-signup-card {
+  background: linear-gradient(90deg, #fce4ec 0%, #fff 100%);
+}
+.message-card {
+  background: linear-gradient(90deg, #e1f5fe 0%, #fff 100%);
+}
+.search-card {
+  background: linear-gradient(90deg, #f3e5f5 0%, #fff 100%);
+}
+.setting-card, .privacy-card {
+  background: linear-gradient(90deg, #f5f7fa 0%, #fff 100%);
+}
+.sidebar .el-menu {
+  border: none;
+  background: transparent;
+}
+.sidebar .el-menu-item {
+  border-radius: 8px;
+  margin: 6px 0;
+  font-size: 16px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  transition: background 0.2s, color 0.2s;
+}
+.sidebar .el-menu-item.is-active {
+  background: #e3f2fd;
+  color: #1976d2;
+  font-weight: bold;
 }
 </style>
