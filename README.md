@@ -1,3 +1,4 @@
+# campusdemo-frontend
 ## 项目简介
 
 `campusdemo-frontend` 是校园社交系统的前端项目，基于 Vue 2 和 Element UI 实现，配合后端 [`campusdemo-backend`](https://github.com/muxi3302159484/campusdemo-backend) 提供校园活动、动态、课程表、消息、个人资料等功能，适用于校园信息化场景。
